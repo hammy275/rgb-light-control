@@ -7,6 +7,7 @@ import colorsys
 import librosa
 from pygame.mixer import music
 import pygame
+import time
 
 
 bulbs: list[SmartBulb] = []
@@ -15,6 +16,7 @@ bulbs: list[SmartBulb] = []
 def error_exit(msg: str):
     print(msg)
     sys.exit(1)
+
 
 def ask(prompt: str, answers: list[str], default: Union[str, None] = None) -> str:
     """Ask a question with a list of answers.
@@ -60,18 +62,21 @@ def ask_int(prompt: str, default: Union[int, None] = None) -> int:
                 answer = None
 
 
-def ask_file_path(prompt: str) -> str:
+def ask_file_path(prompt: str, optional: bool = False) -> Union[str, None]:
     """Ask user for the path to a file.
 
     Args:
         prompt: Question to ask.
+        optional: Whether to return None on an empty input.
 
     Returns:
-        A path to a file.
+        A path to a file, or None if the input was empty and optional is True.
     """
     path = None
     while path is None or not os.path.isfile(path):
-        path = os.path.expanduser(os.path.expandvars(prompt))
+        path = os.path.expanduser(os.path.expandvars(input(prompt)))
+        if path == "" and optional:
+            return None
     return path
 
 
@@ -108,8 +113,7 @@ def ask_colors_rgb(prompt: str) -> str:
     Returns:
         A valid string of RGB colors that convert_rgb_colors_string() can successfully convert.
     """
-    is_valid = False
-    while not is_valid:
+    while True:
         print("RGB values should be a semicolon separated set of comma-separated color values. For example, 255,0,"
               "0;0,0,255 is red, followed by green.")
         ans = input(prompt)
@@ -156,8 +160,33 @@ async def load_bulbs():
     await asyncio.gather(*[bulb.update() for bulb in bulbs], return_exceptions=True)
 
 
+async def estimate_send_delay(num_tests=40):
+    """Roughly estimate the delay waiting for bulbs to get the color data.
+
+    Args:
+        num_tests: Number of tests to run for the average delay. Must be between 1 and 360, inclusive.
+
+    Returns:
+        An estimate, in seconds, of the time for a bulb to change its color.
+    """
+    if num_tests < 1 or num_tests > 360:
+        error_exit("Can only estimate with 1-360 tests, inclusive.")
+    print("Estimating delay to send light info")
+    avg = 0
+    h = 0
+    for i in range(num_tests):
+        start = time.time()
+        await send_hsv(h, 100, 100)
+        end = time.time()
+        avg += end - start
+        h += 1
+    delay = avg / num_tests
+    print(f"Estimated delay to be {(avg / num_tests):.3f}")
+    return delay / 2  # Delay is cut in half to ignore the return-trip time.
+
+
 async def send_hsv(h: int, s: int, v: int, transition: int = 0) -> tuple[Any]:
-    """Set a HSV value to all bulbs, ignoring errors,
+    """Set an HSV value to all bulbs, ignoring errors,
 
     Args:
         h: HSV hue value.
@@ -188,16 +217,36 @@ async def rainbow(speed: int):
         hue += speed
 
 
-async def bpm(colors: list[tuple[int, int, int]], filepath: str):
-    waveform, sampling_rate = librosa.load(filepath)
-    tempo, beats = librosa.beat.beat_track(y=waveform, sr=sampling_rate)
-    tempo = tempo[0]
-    wait_time = tempo / 60 / 4  # Switch on every quarter note
+async def bpm(colors: list[tuple[int, int, int]], filepath: str, calc_filepath: str, tempo: Union[int, None]):
+    """Change lights per quarter note.
+
+    Args:
+        colors: Colors to cycle between as a list of HSV tuples.
+        filepath: Filepath to music
+        calc_filepath: Filepath to file to use for BPM calculations. Helpful to pass an instrumental here.
+        tempo: Tempo to play at, or use None to figure it out automatically.
+
+    Returns:
+        Does not return.
+    """
+    # Get BPM if not specified
+    if tempo is None:
+        waveform, sampling_rate = librosa.load(calc_filepath)
+        tempo = librosa.beat.beat_track(y=waveform, sr=sampling_rate)[0][0]
+
+    # Calculate time to wait before next light switch
+    wait_time = tempo / 60 / 2  # Switch on every half note
+
+    # Pygame init
     pygame.init()
     music.load(filepath)
-    music.play()
-    import time
+
+    # Estimate delay for light changes
+    light_change_delay = await estimate_send_delay()
+    wait_time -= light_change_delay
+
     index = 0
+    music.play()
     while True:
         hsv = colors[index]
         time.sleep(wait_time)
@@ -205,6 +254,67 @@ async def bpm(colors: list[tuple[int, int, int]], filepath: str):
         index += 1
         if index >= len(colors):
             index = 0
+
+
+async def beats_peaks(colors: list[tuple[int, int, int]], filepath: str, calc_filepath: str, submode: str):
+    """Change lights to the beat of the song or to the peaks in a song.
+
+    Args:
+        colors: Colors to cycle between as a list of HSV tuples.
+        filepath: Filepath to music
+        calc_filepath: Filepath to file to use for beats/peaks calculations. Helpful to pass an instrumental here.
+        submode: One of "beat", "peaks", or "onset_detect". "onset_detect" is the best from testing.
+
+    Returns:
+        Returns None once the song is done playing
+    """
+    # Calculate beat timings
+    waveform, sampling_rate = librosa.load(calc_filepath)
+    if submode == "peaks":
+        onset_env = librosa.onset.onset_strength(y=waveform, sr=sampling_rate, hop_length=512)
+        frames = librosa.util.peak_pick(onset_env, pre_max=3, post_max=3, pre_avg=3, post_avg=5, delta=0.5, wait=10,
+                                        sparse=True)
+    elif submode == "beat":
+        _, frames = librosa.beat.beat_track(y=waveform, sr=sampling_rate)
+    else:  # "onset_detect"
+        frames = librosa.onset.onset_detect(y=waveform, sr=sampling_rate, units="frames", backtrack=True, sparse=True)
+    times = librosa.frames_to_time(frames)
+
+    # Pygame init
+    pygame.init()
+    music.load(filepath)
+
+    # Estimate delay for light changes, and apply to all elements of the times list
+    send_delay = await estimate_send_delay()
+    for i in range(len(times)):
+        times[i] -= send_delay
+
+    color_index = 0
+    times_index = 0
+    music.play()
+    start = time.time()
+
+    # Use a tight loop to send a light change request the instant we're supposed to. This way, we don't need
+    # to time the rest of the code.
+    while True:
+        # Get HSV to play and the index for the next HSV to play we should play the next one
+        next_time = times[times_index]
+        hsv = colors[color_index]
+        color_index += 1
+        if color_index >= len(colors):
+            color_index = 0
+        # Tight loop until ready to do light change
+        while time.time() - start < next_time:
+            pass
+        # Send HSV and advances times index.
+        await send_hsv(hsv[0], hsv[1], hsv[2])
+        times_index += 1
+        # Tight loop to wait until end of song, then return
+        if times_index >= len(times):
+            while music.get_busy():
+                pass
+            return
+
 
 async def run_with_args(args: list[str]):
     """Run this script with the provided list of arguments.
@@ -229,14 +339,24 @@ async def run_with_args(args: list[str]):
         if len(args) < 2:
             error_exit("Please specify a music submode!")
         submode = args[1]
-        if submode == "bpm":
-            if len(args) < 4:
-                error_exit("Please specify an RGB color string and a filepath to the music.")
+        if submode in ["bpm", "beat", "peaks", "onset_detect"]:
+            if len(args) < 5:
+                error_exit("Please specify an RGB color string, a filepath to the music, and a filepath to the music "
+                           "for calculations (either the same path again, or the path to an instrumental).")
             colors = convert_rgb_colors_string(args[2])
             filepath = os.path.expanduser(os.path.expandvars(args[3]))
+            calc_filepath = os.path.expanduser(os.path.expandvars(args[4]))
             if not os.path.isfile(filepath):
                 error_exit(f"{filepath} is not a file!")
-            await bpm(colors, filepath)
+            elif not os.path.isfile(calc_filepath):
+                error_exit(f"{calc_filepath} is not a file!")
+            if submode == "bpm":
+                tempo = None if len(args) < 6 or args[5] == "0" else int(args[5])
+                await bpm(colors, filepath, calc_filepath, tempo)
+            elif submode in ["beat", "peaks", "onset_detect"]:
+                await beats_peaks(colors, filepath, calc_filepath, submode)
+        else:
+            error_exit(f"Invalid submode {submode}.")
     else:
         error_exit(f"Invalid mode {mode}.")
 
@@ -257,10 +377,14 @@ async def main():
         if mode == "rainbow":
             speed = ask_int("Input a speed, where 360 goes through the entire rainbow", 5)
             args.append(str(speed))
-        elif mode == "bpm":
-            args.append(ask("Which submode of music sync do you want to use?", ["bpm"], "bpm"))
+        elif mode == "music":
+            args.append(ask("Which submode of music sync do you want to use?",
+                            ["beat", "bpm", "peaks", "onset_detect"], "onset_detect"))
             args.append(ask_colors_rgb("Enter a list of RGB values to change between each beat: "))
             args.append(ask_file_path("Enter the file path to the music to play: "))
+            args.append(ask_file_path("Enter the file path to the instrumental if you have one: ", optional=True))
+            if args[1] == "bpm":
+                args.append(str(ask_int("Enter a BPM, or don't specify one to try to determine it automatically.", 0)))
         await run_with_args(args)
     else:
         await run_with_args(sys.argv[1:])
