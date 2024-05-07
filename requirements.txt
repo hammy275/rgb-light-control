@@ -1,1 +1,3 @@
 python-kasa[speedups]
+librosa
+pygame
