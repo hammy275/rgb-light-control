@@ -269,7 +269,8 @@ async def cycle_onset_detect(colors: list[tuple[int, int, int]], filepath: str, 
     """
     # Calculate beat timings
     waveform, sampling_rate = librosa.load(calc_filepath)
-    frames = librosa.onset.onset_detect(y=waveform, sr=sampling_rate, units="frames", backtrack=True, sparse=True)
+    frames = librosa.onset.onset_detect(y=waveform, sr=sampling_rate, units="frames", backtrack=False, sparse=True,
+                                        pre_max=10, post_max=10, pre_avg=len(waveform), post_avg=len(waveform))
     times = librosa.frames_to_time(frames)
 
     # Pygame init
