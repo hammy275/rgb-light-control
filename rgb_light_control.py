@@ -92,16 +92,48 @@ async def rainbow(speed: int):
         hue += speed
 
 
-async def main():
-    await load_bulbs()
+async def run_with_args(args: list[str]):
+    """Run this script with the provided list of arguments.
+
+    Args:
+        args: Arguments to run this script with, not including the script name.
+
+    Returns:
+        This function does not return. This function either exits the program with an error code or runs until
+        interrupted.
+    """
+    mode = args[0]
+    if mode == "rainbow":
+        speed = 5
+        if len(args) >= 2:
+            try:
+                speed = int(args[1])
+            except ValueError:
+                print(f"{speed} is not a number!")
+                sys.exit(1)
+        await rainbow(speed)
+
+
+async def init():
     if not os.path.isfile("lights.txt"):
         print("lights.txt file not found! Please create it and input a list of bulbs to control, with one IP address "
               "per line.")
         sys.exit(1)
-    mode = ask("Which mode do you want to use?", ["rainbow"], "rainbow")
-    if mode == "rainbow":
-        speed = ask_int("Input a speed, where 360 goes through the entire rainbow", 5)
-        await rainbow(speed)
+    await load_bulbs()
+
+
+async def main():
+    await init()
+    if len(sys.argv) == 1:
+        args = []
+        mode = ask("Which mode do you want to use?", ["rainbow"], "rainbow")
+        args.append(mode)
+        if mode == "rainbow":
+            speed = ask_int("Input a speed, where 360 goes through the entire rainbow", 5)
+            args.append(str(speed))
+        await run_with_args(args)
+    else:
+        await run_with_args(sys.argv[1:])
 
 
 if __name__ == "__main__":
