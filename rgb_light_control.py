@@ -200,7 +200,7 @@ async def send_hsv(h: int, s: int, v: int, transition: int = 0) -> tuple[Any]:
     return await asyncio.gather(*[bulb.set_hsv(h, s, v, transition=transition) for bulb in bulbs], return_exceptions=True)
 
 
-async def rainbow(speed: int):
+async def cycle_rainbow(speed: int):
     """Moves the bulbs through the rainbow as fast as possible.
 
     Args:
@@ -217,7 +217,7 @@ async def rainbow(speed: int):
         hue += speed
 
 
-async def bpm(colors: list[tuple[int, int, int]], filepath: str, calc_filepath: str, tempo: Union[int, None]):
+async def cycle_bpm(colors: list[tuple[int, int, int]], filepath: str, calc_filepath: str, tempo: Union[int, None]):
     """Change lights per quarter note.
 
     Args:
@@ -256,28 +256,20 @@ async def bpm(colors: list[tuple[int, int, int]], filepath: str, calc_filepath: 
             index = 0
 
 
-async def beats_peaks(colors: list[tuple[int, int, int]], filepath: str, calc_filepath: str, submode: str):
+async def cycle_onset_detect(colors: list[tuple[int, int, int]], filepath: str, calc_filepath: str):
     """Change lights to the beat of the song or to the peaks in a song.
 
     Args:
         colors: Colors to cycle between as a list of HSV tuples.
         filepath: Filepath to music
         calc_filepath: Filepath to file to use for beats/peaks calculations. Helpful to pass an instrumental here.
-        submode: One of "beat", "peaks", or "onset_detect". "onset_detect" is the best from testing.
 
     Returns:
         Returns None once the song is done playing
     """
     # Calculate beat timings
     waveform, sampling_rate = librosa.load(calc_filepath)
-    if submode == "peaks":
-        onset_env = librosa.onset.onset_strength(y=waveform, sr=sampling_rate, hop_length=512)
-        frames = librosa.util.peak_pick(onset_env, pre_max=3, post_max=3, pre_avg=3, post_avg=5, delta=0.5, wait=10,
-                                        sparse=True)
-    elif submode == "beat":
-        _, frames = librosa.beat.beat_track(y=waveform, sr=sampling_rate)
-    else:  # "onset_detect"
-        frames = librosa.onset.onset_detect(y=waveform, sr=sampling_rate, units="frames", backtrack=True, sparse=True)
+    frames = librosa.onset.onset_detect(y=waveform, sr=sampling_rate, units="frames", backtrack=True, sparse=True)
     times = librosa.frames_to_time(frames)
 
     # Pygame init
@@ -334,12 +326,12 @@ async def run_with_args(args: list[str]):
                 speed = int(args[1])
             except ValueError:
                 error_exit(f"{speed} is not a number!")
-        await rainbow(speed)
+        await cycle_rainbow(speed)
     elif mode == "music":
         if len(args) < 2:
             error_exit("Please specify a music submode!")
         submode = args[1]
-        if submode in ["bpm", "beat", "peaks", "onset_detect"]:
+        if submode in ["bpm", "onset_detect"]:
             if len(args) < 5:
                 error_exit("Please specify an RGB color string, a filepath to the music, and a filepath to the music "
                            "for calculations (either the same path again, or the path to an instrumental).")
@@ -352,9 +344,9 @@ async def run_with_args(args: list[str]):
                 error_exit(f"{calc_filepath} is not a file!")
             if submode == "bpm":
                 tempo = None if len(args) < 6 or args[5] == "0" else int(args[5])
-                await bpm(colors, filepath, calc_filepath, tempo)
-            elif submode in ["beat", "peaks", "onset_detect"]:
-                await beats_peaks(colors, filepath, calc_filepath, submode)
+                await cycle_bpm(colors, filepath, calc_filepath, tempo)
+            elif submode == "onset_detect":
+                await cycle_onset_detect(colors, filepath, calc_filepath)
         else:
             error_exit(f"Invalid submode {submode}.")
     else:
@@ -379,7 +371,7 @@ async def main():
             args.append(str(speed))
         elif mode == "music":
             args.append(ask("Which submode of music sync do you want to use?",
-                            ["beat", "bpm", "peaks", "onset_detect"], "onset_detect"))
+                            ["bpm", "onset_detect"], "onset_detect"))
             args.append(ask_colors_rgb("Enter a list of RGB values to change between each beat: "))
             args.append(ask_file_path("Enter the file path to the music to play: "))
             args.append(ask_file_path("Enter the file path to the instrumental if you have one: ", optional=True))
