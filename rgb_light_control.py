@@ -269,8 +269,19 @@ async def cycle_onset_detect(colors: list[tuple[int, int, int]], filepath: str, 
     """
     # Calculate beat timings
     waveform, sampling_rate = librosa.load(calc_filepath)
-    frames = librosa.onset.onset_detect(y=waveform, sr=sampling_rate, units="frames", backtrack=False, sparse=True,
-                                        pre_max=10, post_max=10, pre_avg=len(waveform), post_avg=len(waveform))
+    bpm = librosa.beat.beat_track(y=waveform, sr=sampling_rate)[0][0]
+    duration = librosa.get_duration(y=waveform, sr=sampling_rate)
+    max_notes = int(bpm / 60 * duration)
+    frames = []  # Get rid of warning for frames possibly not being initialized
+    bound = 3
+    while bound < 20:
+        frames = librosa.onset.onset_detect(y=waveform, sr=sampling_rate, units="frames", backtrack=False, sparse=True,
+                                            pre_max=bound, post_max=bound, pre_avg=len(waveform), post_avg=len(waveform))
+        if len(frames) < max_notes:
+            break
+        bound += 1
+    print(f"Using pre_max and post_max {bound}. "
+          f"There are {len(frames)} light switches, with the maximum at {max_notes}.")
     times = librosa.frames_to_time(frames)
 
     # Pygame init
