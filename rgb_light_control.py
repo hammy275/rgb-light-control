@@ -236,36 +236,26 @@ async def cycle_music(colors: list[tuple[int, int, int]], filepath: str, calc_fi
     # Get all notes that are significantly louder than the average of the song and the very close neighbors
     frames1 = []
     delta = 0.07
-    while delta < 0.2:
+    while delta < 0.3:
         frames1 = librosa.onset.onset_detect(y=waveform, sr=sampling_rate, units="frames", backtrack=False, sparse=True,
                                              pre_max=3, post_max=3, pre_avg=sampling_rate, post_avg=sampling_rate,
                                              delta=delta)
         if len(frames1) < max_notes:
             break
         delta += 0.01
-    # Get some notes that are significantly louder than all the neighbors
-    frames2 = []
-    bound = 3
-    while bound < 20:
-        frames2 = librosa.onset.onset_detect(y=waveform, sr=sampling_rate, units="frames", backtrack=False, sparse=True,
-                                             pre_max=bound, post_max=bound, pre_avg=sampling_rate,
-                                             post_avg=sampling_rate)
-        # Remove frames that are already captured in frames1
-        frames2 = list(frames2)
-        to_remove = []
-        for f in frames2:
-            if f in frames1:
+    # Get notes on the automatically determined beat that aren't super close to the frames from above
+    frames2 = list(librosa.beat.beat_track(y=waveform, sr=sampling_rate)[1])
+    to_remove = []
+    for f in frames2:
+        for i in range(-3, 4):
+            if f - i in frames1:
                 to_remove.append(f)
-        for f in to_remove:
-            frames2.remove(f)
-        # This is our best!
-        if len(frames2) < max_notes:
-            break
-        # Check the next bound up
-        bound += 1
+                break
+    for f in to_remove:
+        frames2.remove(f)
     # Merge the two lists of notes
     frames = sorted(set(list(frames1) + list(frames2)))
-    print(f"Using delta {delta:.2f} and bound {bound}, resulting in {len(frames)} light switches.")
+    print(f"Using delta {delta:.2f}. We have {len(frames)} light switches.")
     times = librosa.frames_to_time(frames)
 
     # Pygame init
