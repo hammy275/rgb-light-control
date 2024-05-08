@@ -217,46 +217,7 @@ async def cycle_rainbow(speed: int):
         hue += speed
 
 
-async def cycle_bpm(colors: list[tuple[int, int, int]], filepath: str, calc_filepath: str, tempo: Union[int, None]):
-    """Change lights per quarter note.
-
-    Args:
-        colors: Colors to cycle between as a list of HSV tuples.
-        filepath: Filepath to music
-        calc_filepath: Filepath to file to use for BPM calculations. Helpful to pass an instrumental here.
-        tempo: Tempo to play at, or use None to figure it out automatically.
-
-    Returns:
-        Does not return.
-    """
-    # Get BPM if not specified
-    if tempo is None:
-        waveform, sampling_rate = librosa.load(calc_filepath)
-        tempo = librosa.beat.beat_track(y=waveform, sr=sampling_rate)[0][0]
-
-    # Calculate time to wait before next light switch
-    wait_time = tempo / 60 / 2  # Switch on every half note
-
-    # Pygame init
-    pygame.init()
-    music.load(filepath)
-
-    # Estimate delay for light changes
-    light_change_delay = await estimate_send_delay()
-    wait_time -= light_change_delay
-
-    index = 0
-    music.play()
-    while True:
-        hsv = colors[index]
-        time.sleep(wait_time)
-        await send_hsv(hsv[0], hsv[1], hsv[2])
-        index += 1
-        if index >= len(colors):
-            index = 0
-
-
-async def cycle_onset_detect(colors: list[tuple[int, int, int]], filepath: str, calc_filepath: str):
+async def cycle_music(colors: list[tuple[int, int, int]], filepath: str, calc_filepath: str):
     """Change lights to the beat of the song or to the peaks in a song.
 
     Args:
@@ -340,27 +301,18 @@ async def run_with_args(args: list[str]):
                 error_exit(f"{speed} is not a number!")
         await cycle_rainbow(speed)
     elif mode == "music":
-        if len(args) < 2:
-            error_exit("Please specify a music submode!")
-        submode = args[1]
-        if submode in ["bpm", "onset_detect"]:
-            if len(args) < 5:
-                error_exit("Please specify an RGB color string, a filepath to the music, and a filepath to the music "
-                           "for calculations (either the same path again, or the path to an instrumental).")
-            colors = convert_rgb_colors_string(args[2])
-            filepath = os.path.expanduser(os.path.expandvars(args[3]))
-            calc_filepath = os.path.expanduser(os.path.expandvars(args[4]))
-            if not os.path.isfile(filepath):
-                error_exit(f"{filepath} is not a file!")
-            elif not os.path.isfile(calc_filepath):
-                error_exit(f"{calc_filepath} is not a file!")
-            if submode == "bpm":
-                tempo = None if len(args) < 6 or args[5] == "0" else int(args[5])
-                await cycle_bpm(colors, filepath, calc_filepath, tempo)
-            elif submode == "onset_detect":
-                await cycle_onset_detect(colors, filepath, calc_filepath)
-        else:
-            error_exit(f"Invalid submode {submode}.")
+        if len(args) < 4:
+            error_exit("Please specify an RGB color string, a filepath to the music, and a filepath to the music "
+                       "for calculations (either the same path again, or the path to an instrumental ideally).")
+        colors = convert_rgb_colors_string(args[1])
+        filepath = os.path.expanduser(os.path.expandvars(args[2]))
+        calc_filepath = os.path.expanduser(os.path.expandvars(args[3]))
+        if not os.path.isfile(filepath):
+            error_exit(f"{filepath} is not a file!")
+        elif not os.path.isfile(calc_filepath):
+            error_exit(f"{calc_filepath} is not a file!")
+        await cycle_music(colors, filepath, calc_filepath)
+
     else:
         error_exit(f"Invalid mode {mode}.")
 
