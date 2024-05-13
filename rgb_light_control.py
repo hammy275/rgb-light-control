@@ -217,11 +217,11 @@ async def cycle_rainbow(speed: int):
         hue += speed
 
 
-async def cycle_music(colors: list[tuple[int, int, int]], filepath: str, calc_filepath: str):
+async def cycle_music(colors_in: list[tuple[int, int, int]], filepath: str, calc_filepath: str):
     """Change lights to the notes of the song.
 
     Args:
-        colors: Colors to cycle between as a list of HSV tuples.
+        colors_in: Colors to cycle between as a list of HSV tuples.
         filepath: Filepath to music
         calc_filepath: Filepath to file to use for beats/peaks calculations. Helpful to pass an instrumental here.
 
@@ -257,6 +257,9 @@ async def cycle_music(colors: list[tuple[int, int, int]], filepath: str, calc_fi
     frames = sorted(set(list(frames1) + list(frames2)))
     print(f"Using delta {delta:.2f}. We have {len(frames)} light switches.")
     times = librosa.frames_to_time(frames)
+    colors = []
+    for i in range(len(times)):
+        colors.append(colors_in[i % len(colors_in)])
 
     # Pygame init
     pygame.init()
@@ -267,28 +270,24 @@ async def cycle_music(colors: list[tuple[int, int, int]], filepath: str, calc_fi
     for i in range(len(times)):
         times[i] -= send_delay
 
-    color_index = 0
-    times_index = 0
+    index = 0
     music.play()
     start = time.time()
 
     # Use a tight loop to send a light change request the instant we're supposed to. This way, we don't need
     # to time the rest of the code.
     while True:
-        # Get HSV to play and the index for the next HSV to play we should play the next one
-        next_time = times[times_index]
-        hsv = colors[color_index]
-        color_index += 1
-        if color_index >= len(colors):
-            color_index = 0
+        # Get next time to play at and the color to play at that time.
+        next_time = times[index]
+        hsv = colors[index]
         # Tight loop until ready to do light change
         while time.time() - start < next_time:
             pass
-        # Send HSV and advances times index.
+        # Send HSV and advances index.
         await send_hsv(hsv[0], hsv[1], hsv[2])
-        times_index += 1
-        # Tight loop to wait until end of song, then return
-        if times_index >= len(times):
+        index += 1
+        # Tight loop to wait until end of song once we're through with all the lights, then return
+        if index >= len(times):
             while music.get_busy():
                 pass
             return
