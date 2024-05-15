@@ -217,17 +217,21 @@ async def cycle_rainbow(speed: int):
         hue += speed
 
 
-async def cycle_music(colors_in: list[tuple[int, int, int]], filepath: str, calc_filepath: str):
+async def cycle_music(colors_in: list[tuple[int, int, int]], filepath: str, calc_filepath: Union[str, None] = None):
     """Change lights to the notes of the song.
 
     Args:
         colors_in: Colors to cycle between as a list of HSV tuples.
         filepath: Filepath to music
-        calc_filepath: Filepath to file to use for beats/peaks calculations. Helpful to pass an instrumental here.
+        calc_filepath: Filepath to file to use for beats/peaks calculations. Helpful to pass an instrumental here. If
+                       None, the path supplied as filepath is used.
 
     Returns:
         Returns None once the song is done playing
     """
+    if calc_filepath is None:
+        calc_filepath = filepath
+
     # Calculate beat timings
     waveform, sampling_rate = librosa.load(calc_filepath)
     bpm = librosa.beat.beat_track(y=waveform, sr=sampling_rate)[0][0]
@@ -313,16 +317,18 @@ async def run_with_args(args: list[str]):
                 error_exit(f"{speed} is not a number!")
         await cycle_rainbow(speed)
     elif mode == "music":
-        if len(args) < 4:
+        if len(args) < 3:
             error_exit("Please specify an RGB color string, a filepath to the music, and a filepath to the music "
                        "for calculations (either the same path again, or the path to an instrumental ideally).")
         colors = convert_rgb_colors_string(args[1])
         filepath = os.path.expanduser(os.path.expandvars(args[2]))
-        calc_filepath = os.path.expanduser(os.path.expandvars(args[3]))
         if not os.path.isfile(filepath):
             error_exit(f"{filepath} is not a file!")
-        elif not os.path.isfile(calc_filepath):
-            error_exit(f"{calc_filepath} is not a file!")
+        calc_filepath = args[3] if len(args) >= 4 else None
+        if calc_filepath is not None:
+            calc_filepath = os.path.expanduser(os.path.expandvars(args[3]))
+            if not os.path.isfile(calc_filepath):
+                error_exit(f"{calc_filepath} is not a file!")
         await cycle_music(colors, filepath, calc_filepath)
 
     else:
