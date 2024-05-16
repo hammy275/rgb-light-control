@@ -256,7 +256,7 @@ async def cycle_music(mode: str, colors_in: list[tuple[int, int, int]], filepath
     elif len(colors_in) < 1:
         error_exit("Specify at least one color!")
 
-    # Initialize early for some music modes that set it
+    # Initialize early so music modes can set it if wanted
     transition_time = None
 
     # Estimate light send delay
@@ -281,7 +281,9 @@ async def cycle_music(mode: str, colors_in: list[tuple[int, int, int]], filepath
                 break
             delta += 0.01
         # Get notes on the automatically determined beat that aren't super close to the frames from above
-        frames2 = list(librosa.beat.beat_track(y=waveform, sr=sampling_rate)[1])
+        bpm, frames2 = librosa.beat.beat_track(y=waveform, sr=sampling_rate)
+        bpm = bpm[0]
+        frames2 = list(frames2)
         to_remove = []
         for f in frames2:
             for g in range(-3, 4):
@@ -293,10 +295,11 @@ async def cycle_music(mode: str, colors_in: list[tuple[int, int, int]], filepath
         # Merge the two lists of notes
         frames = sorted(set(list(frames1) + list(frames2)))
         print(f"Using delta {delta:.2f}. We have {len(frames)} light switches.")
-        times = librosa.frames_to_time(frames)
+        times = list(librosa.frames_to_time(frames))
         colors = []
         for g in range(len(times)):
             colors.append(colors_in[g % len(colors_in)])
+        transition_time = bpm / 60 / 16  # Length of an estimated 64th note
     else:  # mode == "gradient"
         # Get the dB for the song (or something similar to it)
         dbs = librosa.feature.rms(S=librosa.magphase(librosa.stft(waveform))[0])
@@ -381,8 +384,13 @@ async def cycle_music(mode: str, colors_in: list[tuple[int, int, int]], filepath
     for g in range(len(times)):
         times[g] -= send_delay
         times[g] -= transition_time
-    filter(lambda x: x <= send_delay + transition_time, times)
-    transition_time *= 1000  # Convert to ms for passing to bulbs
+
+    # Filter everything too early to send
+    while times[0] < send_delay + transition_time:
+        del times[0]
+        del colors[0]
+
+    transition_time = int(transition_time * 1000)  # Convert to int in ms for passing to bulbs
 
     index = 0
     music.play()
