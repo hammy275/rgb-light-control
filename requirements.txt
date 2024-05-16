@@ -1,3 +1,4 @@
 python-kasa[speedups]
 librosa
 pygame
+numpy

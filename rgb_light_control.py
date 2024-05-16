@@ -8,7 +8,7 @@ import librosa
 from pygame.mixer import music
 import pygame
 import time
-
+import numpy as np
 
 bulbs: list[SmartBulb] = []
 
@@ -197,7 +197,8 @@ async def send_hsv(h: int, s: int, v: int, transition: int = 0) -> tuple[Any]:
     Returns:
         A tuple of all return values from each bulb HSV set.
     """
-    return await asyncio.gather(*[bulb.set_hsv(h, s, v, transition=transition) for bulb in bulbs], return_exceptions=True)
+    return await asyncio.gather(*[bulb.set_hsv(h, s, v, transition=transition) for bulb in bulbs],
+                                return_exceptions=True)
 
 
 async def cycle_rainbow(speed: int):
@@ -217,62 +218,171 @@ async def cycle_rainbow(speed: int):
         hue += speed
 
 
-async def cycle_music(colors_in: list[tuple[int, int, int]], filepath: str, calc_filepath: Union[str, None] = None):
+def average_color_weighted(hsv_min: tuple[int, int, int], hsv_max: tuple[int, int, int], weight: float) \
+        -> tuple[int, int, int]:
+    """Weighted average of two colors in HSV.
+
+    Args:
+        hsv_min: Color when weight = 0.
+        hsv_max: Color when weight = 1.
+        weight: The weight to use towards hsv_max.
+
+    Returns:
+        The weighted average of the color.
+    """
+    z_weight = 1 - weight
+    return (int(hsv_min[0] * z_weight + hsv_max[0] * weight),
+            int(hsv_min[1] * z_weight + hsv_max[1] * weight),
+            int(hsv_min[2] * z_weight + hsv_max[2] * weight))
+
+
+async def cycle_music(mode: str, colors_in: list[tuple[int, int, int]], filepath: str, calc_filepath: Union[str, None]):
     """Change lights to the notes of the song.
 
     Args:
-        colors_in: Colors to cycle between as a list of HSV tuples.
+        mode: A mode. Can always be 'cycle', but can only be 'gradient' if colors_in is of length 2.
+        colors_in: Colors to cycle between as a list of HSV tuples. Must be at least one element long.
         filepath: Filepath to music
         calc_filepath: Filepath to file to use for beats/peaks calculations. Helpful to pass an instrumental here. If
                        None, the path supplied as filepath is used.
 
     Returns:
-        Returns None once the song is done playing
+        Returns None once the song is done playing, or exits on an error.
     """
     if calc_filepath is None:
         calc_filepath = filepath
+    if mode == "gradient" and len(colors_in) != 2:
+        error_exit("Can only use gradient music mode with exactly two colors.")
+    elif len(colors_in) < 1:
+        error_exit("Specify at least one color!")
+
+    # Initialize early for some music modes that set it
+    transition_time = None
+
+    # Estimate light send delay
+    send_delay = await estimate_send_delay()
 
     # Calculate beat timings
+    print("Calculating all light changes to make")
     waveform, sampling_rate = librosa.load(calc_filepath)
     bpm = librosa.beat.beat_track(y=waveform, sr=sampling_rate)[0][0]
     duration = librosa.get_duration(y=waveform, sr=sampling_rate)
     max_notes = int(bpm / 60 * duration * 2 / 3)
-    # Get all notes that are significantly louder than the average of the song and the very close neighbors
-    frames1 = []
-    delta = 0.07
-    while delta < 0.3:
-        frames1 = librosa.onset.onset_detect(y=waveform, sr=sampling_rate, units="frames", backtrack=False, sparse=True,
-                                             pre_max=3, post_max=3, pre_avg=sampling_rate, post_avg=sampling_rate,
-                                             delta=delta)
-        if len(frames1) < max_notes:
-            break
-        delta += 0.01
-    # Get notes on the automatically determined beat that aren't super close to the frames from above
-    frames2 = list(librosa.beat.beat_track(y=waveform, sr=sampling_rate)[1])
-    to_remove = []
-    for f in frames2:
-        for i in range(-3, 4):
-            if f - i in frames1:
-                to_remove.append(f)
+    if mode == "cycle":
+        # Get all notes that are significantly louder than the average of the song and the very close neighbors
+        frames1 = []
+        delta = 0.07
+        while delta < 0.3:
+            frames1 = librosa.onset.onset_detect(y=waveform, sr=sampling_rate, units="frames", backtrack=False,
+                                                 sparse=True,
+                                                 pre_max=3, post_max=3, pre_avg=sampling_rate, post_avg=sampling_rate,
+                                                 delta=delta)
+            if len(frames1) < max_notes:
                 break
-    for f in to_remove:
-        frames2.remove(f)
-    # Merge the two lists of notes
-    frames = sorted(set(list(frames1) + list(frames2)))
-    print(f"Using delta {delta:.2f}. We have {len(frames)} light switches.")
-    times = librosa.frames_to_time(frames)
-    colors = []
-    for i in range(len(times)):
-        colors.append(colors_in[i % len(colors_in)])
+            delta += 0.01
+        # Get notes on the automatically determined beat that aren't super close to the frames from above
+        frames2 = list(librosa.beat.beat_track(y=waveform, sr=sampling_rate)[1])
+        to_remove = []
+        for f in frames2:
+            for g in range(-3, 4):
+                if f - g in frames1:
+                    to_remove.append(f)
+                    break
+        for f in to_remove:
+            frames2.remove(f)
+        # Merge the two lists of notes
+        frames = sorted(set(list(frames1) + list(frames2)))
+        print(f"Using delta {delta:.2f}. We have {len(frames)} light switches.")
+        times = librosa.frames_to_time(frames)
+        colors = []
+        for g in range(len(times)):
+            colors.append(colors_in[g % len(colors_in)])
+    else:  # mode == "gradient"
+        # Get the dB for the song (or something similar to it)
+        dbs = librosa.feature.rms(S=librosa.magphase(librosa.stft(waveform))[0])
+        dbs = list(dbs.T)
+        for g in range(len(dbs)):
+            dbs[g] = np.mean(dbs[g])
+        # Make sure all values are positive by scaling up by the absolute value of the minimum
+        abs_min_db = abs(min(dbs))
+        for g in range(len(dbs)):
+            dbs[g] += abs_min_db
+        max_db = max(dbs)
+        # Calculate the color per frame. The louder, the closer to the second color.
+        frames_all = []
+        colors_all = []
+        dbs_all = []
+        frame_send_delay = max(librosa.time_to_frames([send_delay], sr=sampling_rate)[0] * 8, 1)
+        send_delay = librosa.frames_to_time([frame_send_delay], sr=sampling_rate)[0]
+        f = frame_send_delay
+        while f < len(dbs):
+            frames_all.append(f)
+            dbs_all.append(dbs[f])
+            colors_all.append(average_color_weighted(colors_in[0], colors_in[1], dbs[f] / max_db))
+            f += 1
+
+        # Get the loudest frames per approximate eighth note, and only let that frame into the set of colors to show
+        colors_per_second = round(librosa.beat.beat_track(y=waveform, sr=sampling_rate)[0][0] * 2)
+        frames_per_group = int(librosa.time_to_frames([1 / colors_per_second], sr=sampling_rate)[0])
+        frames_per_group = max(frames_per_group, frame_send_delay)
+        frames = []
+        colors = []
+        dbs = []
+        for g in range(int(len(frames_all) / frames_per_group)):
+            start = g * frames_per_group
+            end = min(start + frames_per_group - 1, len(frames_all))
+            frames_group = []
+            dbs_group = []
+            colors_group = []
+            for i in range(start, end + 1):
+                frames_group.append(frames_all[i])
+                dbs_group.append(dbs_all[i])
+                colors_group.append(colors_all[i])
+            max_db = -9999999999
+            max_frame = -1
+            max_color = (0, 0, 0)
+            for i in range(len(dbs_group)):
+                if dbs_group[i] > max_db:
+                    max_db = dbs_group[i]
+                    max_frame = frames_group[i]
+                    max_color = colors_group[i]
+            frames.append(max_frame)
+            colors.append(max_color)
+            dbs.append(max_db)
+
+        # Twice, remove frames that are quieter than their neighbors (good for quarter note beats)
+        for _ in range(2):
+            to_remove_indices = []
+            i = 1
+            while i < len(frames) - 1:
+                if dbs[i - 1] > dbs[i] or dbs[i + 1] > dbs[i]:
+                    to_remove_indices.append(i)
+                    i += 1
+                i += 1
+
+            while len(to_remove_indices) > 0:
+                index = to_remove_indices.pop()
+                del frames[index]
+                del colors[index]
+                del dbs[index]
+
+        # Calculate transition time and the times to do light changes
+        transition_time = int(librosa.frames_to_time([frames_per_group])[0] / 2)
+        times = librosa.frames_to_time(frames, sr=sampling_rate)
+        print(f"We have {len(times)} total light switches.")
 
     # Pygame init
     pygame.init()
     music.load(filepath)
 
-    # Estimate delay for light changes, and apply to all elements of the times list
-    send_delay = await estimate_send_delay()
-    for i in range(len(times)):
-        times[i] -= send_delay
+    transition_time = int(send_delay * 0.5) if transition_time is None else transition_time
+
+    # Apply estimated light change delay to all elements of the times list
+    for g in range(len(times)):
+        times[g] -= send_delay
+        times[g] -= transition_time
+    filter(lambda x: x <= send_delay + transition_time, times)
+    transition_time *= 1000  # Convert to ms for passing to bulbs
 
     index = 0
     music.play()
@@ -288,7 +398,7 @@ async def cycle_music(colors_in: list[tuple[int, int, int]], filepath: str, calc
         while time.time() - start < next_time:
             pass
         # Send HSV and advances index.
-        await send_hsv(hsv[0], hsv[1], hsv[2])
+        await send_hsv(hsv[0], hsv[1], hsv[2], transition=transition_time)
         index += 1
         # Tight loop to wait until end of song once we're through with all the lights, then return
         if index >= len(times):
@@ -317,19 +427,20 @@ async def run_with_args(args: list[str]):
                 error_exit(f"{speed} is not a number!")
         await cycle_rainbow(speed)
     elif mode == "music":
-        if len(args) < 3:
-            error_exit("Please specify an RGB color string, a filepath to the music, and a filepath to the music "
-                       "for calculations (either the same path again, or the path to an instrumental ideally).")
-        colors = convert_rgb_colors_string(args[1])
-        filepath = os.path.expanduser(os.path.expandvars(args[2]))
+        if len(args) < 4:
+            error_exit("Please specify a mode (cycle or gradient), an RGB color string, a filepath to the music, "
+                       "and optionally, a filepath to the music for calculations, such as an instrumental.")
+        music_mode = args[1]
+        colors = convert_rgb_colors_string(args[2])
+        filepath = os.path.expanduser(os.path.expandvars(args[3]))
         if not os.path.isfile(filepath):
             error_exit(f"{filepath} is not a file!")
-        calc_filepath = args[3] if len(args) >= 4 else None
+        calc_filepath = args[4] if len(args) >= 5 else None
         if calc_filepath is not None:
-            calc_filepath = os.path.expanduser(os.path.expandvars(args[3]))
+            calc_filepath = os.path.expanduser(os.path.expandvars(args[4]))
             if not os.path.isfile(calc_filepath):
                 error_exit(f"{calc_filepath} is not a file!")
-        await cycle_music(colors, filepath, calc_filepath)
+        await cycle_music(music_mode, colors, filepath, calc_filepath)
 
     else:
         error_exit(f"Invalid mode {mode}.")
@@ -355,7 +466,7 @@ async def main():
             args.append(str(speed))
         elif mode == "music":
             args.append(ask("Which submode of music sync do you want to use?",
-                            ["bpm", "onset_detect"], "onset_detect"))
+                            ["cycle", "gradient"], "cycle"))
             args.append(ask_colors_rgb("Enter a list of RGB values to change between each beat: "))
             args.append(ask_file_path("Enter the file path to the music to play: "))
             args.append(ask_file_path("Enter the file path to the instrumental if you have one: ", optional=True))
