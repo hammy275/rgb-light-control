@@ -72,13 +72,11 @@ async def set_hsv():
             transition = int(data["transition"]) if "transition" in data else 0
         except ValueError:
             transition = 0
-        rgb_light_control.bulbs.clear()
         bulbs_to_set = []
         for light in lights:
             if light in all_bulbs:
                 bulbs_to_set.append(all_bulbs[light])
-        rgb_light_control.bulbs = bulbs_to_set
-        await rgb_light_control.send_hsv(h, s, v, transition=transition)
+        await rgb_light_control.send_hsv(h, s, v, transition=transition, bulbs_to_send=bulbs_to_set)
         return make_message("Light HSV set!", 200)
     except (KeyError, TypeError, ValueError):
         return make_message("Please provide keys 'h', 's', 'v', and 'lights' in a valid format.", status_code=400)

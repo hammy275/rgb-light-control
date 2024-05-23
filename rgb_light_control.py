@@ -185,7 +185,7 @@ async def estimate_send_delay(num_tests=40):
     return delay / 2  # Delay is cut in half to ignore the return-trip time.
 
 
-async def send_hsv(h: int, s: int, v: int, transition: int = 0) -> tuple[Any]:
+async def send_hsv(h: int, s: int, v: int, transition: int = 0, bulbs_to_send: list[SmartBulb] = bulbs) -> tuple[Any]:
     """Set an HSV value to all bulbs, ignoring errors,
 
     Args:
@@ -193,11 +193,12 @@ async def send_hsv(h: int, s: int, v: int, transition: int = 0) -> tuple[Any]:
         s: HSV saturation value.
         v: HSV value value.
         transition: The time to wait to transition in ms. Defaults to no time.
+        bulbs_to_send: The list of bulbs to send. Defaults to all bulbs in the text config after load_bulbs() is called.
 
     Returns:
         A tuple of all return values from each bulb HSV set.
     """
-    return await asyncio.gather(*[bulb.set_hsv(h, s, v, transition=transition) for bulb in bulbs],
+    return await asyncio.gather(*[bulb.set_hsv(h, s, v, transition=transition) for bulb in bulbs_to_send],
                                 return_exceptions=True)
 
 
