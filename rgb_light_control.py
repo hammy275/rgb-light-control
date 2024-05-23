@@ -160,11 +160,12 @@ async def load_bulbs():
     await asyncio.gather(*[bulb.update() for bulb in bulbs], return_exceptions=True)
 
 
-async def estimate_send_delay(num_tests=40):
+async def estimate_send_delay(num_tests=40, bulbs_to_test=bulbs):
     """Roughly estimate the delay waiting for bulbs to get the color data.
 
     Args:
         num_tests: Number of tests to run for the average delay. Must be between 1 and 360, inclusive.
+        bulbs_to_test: The list of bulbs to test.
 
     Returns:
         An estimate, in seconds, of the time for a bulb to change its color.
@@ -176,7 +177,7 @@ async def estimate_send_delay(num_tests=40):
     h = 0
     for i in range(num_tests):
         start = time.time()
-        await send_hsv(h, 100, 100)
+        await send_hsv(h, 100, 100, bulbs_to_send=bulbs_to_test)
         end = time.time()
         avg += end - start
         h += 1
