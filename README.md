@@ -10,3 +10,5 @@ This program flashes lights, sometimes rapidly! If you are photosensitive and/or
 
 - `rgb_light_control.py`: Main script to control lights on a pattern. Expects a list of IP addresses to be provided in a file named `lights.txt`, separated by newlines.
 - `old_rgb_light_control.py`: An old version of `rgb_light_control.py`. A much, much messier control script that only supports one light. The light's IP address should go into a file named `old_config.txt`.
+- `web_server.py`: A web server that implements an API to handle RGB light control from within your network. Does NOT have authentication! You can optionally create a file named `web_server_config.txt`, which can contain any of the lines specified below. Any lines that don't follow any format below are ignored.
+    - `discovery_ip=IP_HERE`: `IP_HERE` should be replaced with the IP address to discover lights on (usually your gateway, but ending in `.255` instead of `.1`). If not specified, defaults to `255.255.255.255`.

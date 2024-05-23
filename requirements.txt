@@ -2,3 +2,4 @@ python-kasa[speedups]
 librosa
 pygame
 numpy
+quart  # async reimplementation of flask made by the same authors
