@@ -238,31 +238,24 @@ def average_color_weighted(hsv_min: tuple[int, int, int], hsv_max: tuple[int, in
             int(hsv_min[2] * z_weight + hsv_max[2] * weight))
 
 
-async def cycle_music(mode: str, colors_in: list[tuple[int, int, int]], filepath: str, calc_filepath: Union[str, None]):
-    """Change lights to the notes of the song.
+async def calculate_music_timings(mode: str, colors_in: list[tuple[int, int, int]], calc_filepath: str,
+                                  send_delay: float) -> tuple[list[float], list[tuple[int, int, int]], int]:
+    """Calculate music timings from a given mode.
 
     Args:
-        mode: A mode. Can always be 'cycle', but can only be 'gradient' if colors_in is of length 2.
-        colors_in: Colors to cycle between as a list of HSV tuples. Must be at least one element long.
-        filepath: Filepath to music
-        calc_filepath: Filepath to file to use for beats/peaks calculations. Helpful to pass an instrumental here. If
-                       None, the path supplied as filepath is used.
+        mode: The mode to calculate for. Should either be 'cycle' or 'gradient'.
+        colors_in: The list of colors to use. Should be of exactly length 2 if using 'gradient', or at least length 1 for 'cycle'.
+        calc_filepath: The path to the music file to calculate from.
+        send_delay: The delay between sending a light request and said request completing.
 
     Returns:
-        Returns None once the song is done playing, or exits on an error.
+        A tuple containing the list of times, the list of colors for those times, and the light transition time in that order.
+        All timings are in seconds, and the colors are a tuple in HSV format.
     """
-    if calc_filepath is None:
-        calc_filepath = filepath
     if mode == "gradient" and len(colors_in) != 2:
         error_exit("Can only use gradient music mode with exactly two colors.")
     elif len(colors_in) < 1:
         error_exit("Specify at least one color!")
-
-    # Initialize early so music modes can set it if wanted
-    transition_time = None
-
-    # Estimate light send delay
-    send_delay = await estimate_send_delay()
 
     # Calculate beat timings
     print("Calculating all light changes to make")
@@ -376,21 +369,42 @@ async def cycle_music(mode: str, colors_in: list[tuple[int, int, int]], filepath
         times = librosa.frames_to_time(frames, sr=sampling_rate)
         print(f"We have {len(times)} total light switches.")
 
-    # Pygame init
-    pygame.init()
-    music.load(filepath)
-
-    transition_time = int(send_delay * 0.5) if transition_time is None else transition_time
-
     # Apply estimated light change delay to all elements of the times list
     for g in range(len(times)):
         times[g] -= send_delay
         times[g] -= transition_time
 
+    times = list(times)
+    colors = list(colors)
+
     # Filter everything too early to send
     while times[0] < send_delay + transition_time:
         del times[0]
         del colors[0]
+
+    return times, colors, transition_time
+
+
+async def cycle_music(mode: str, colors_in: list[tuple[int, int, int]], filepath: str, calc_filepath: Union[str, None]):
+    """Change lights to the notes of the song.
+
+    Args:
+        mode: A mode. Can always be 'cycle', but can only be 'gradient' if colors_in is of length 2.
+        colors_in: Colors to cycle between as a list of HSV tuples. Must be at least one element long.
+        filepath: Filepath to music
+        calc_filepath: Filepath to file to use for beats/peaks calculations. Helpful to pass an instrumental here. If
+                       None, the path supplied as filepath is used.
+
+    Returns:
+        Returns None once the song is done playing, or exits on an error.
+    """
+    send_delay = await estimate_send_delay()
+    calc_filepath = calc_filepath if calc_filepath is not None else filepath
+    times, colors, transition_time = await calculate_music_timings(mode, colors_in, calc_filepath, send_delay)
+
+    # Pygame init
+    pygame.init()
+    music.load(filepath)
 
     transition_time = int(transition_time * 1000)  # Convert to int in ms for passing to bulbs
 
