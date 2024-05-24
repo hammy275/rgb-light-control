@@ -3,6 +3,7 @@ import os
 import kasa
 from typing import Any, Union
 import asyncio
+import json
 
 import rgb_light_control
 
@@ -42,7 +43,13 @@ async def get_data() -> Union[dict, None]:
     if request.method == "GET":
         return dict(request.args)
     else:
-        return await request.json
+        data = await request.json
+        if data is not None:
+            return data
+        form = await request.form
+        if "json" in form:
+            return json.loads(form["json"])
+        return None
 
 
 def get_list(lst: Union[str, list]):
@@ -60,7 +67,37 @@ def get_bulbs_list(data: dict):
     return bulbs_list
 
 
-@app.route("/estimate_light_delay")
+@app.route("/calculate_music_timings", methods=REQUEST_METHODS)
+async def calculate_music_timings():
+    try:
+        if request.method == "GET":
+            return make_message("Due to requiring file uploads, this endpoint only accepts POST requests.", status_code=405)
+        data = await get_data()
+        files = await request.files
+        if "file" not in files:
+            return make_message("No 'file' supplied.", status_code=400)
+        file = files["file"]
+        if file.filename == "":
+            return make_message("Your music file does not have a name! Did you not select one?", status_code=400)
+
+        mode = data["mode"]
+        if mode not in ["cycle", "gradient"]:
+            return make_message("Mode must be either 'cycle' or 'gradient'.", status_code=400)
+
+        colors = get_list(data["colors"])
+        send_delay = float(data["send_delay"])
+
+        try:
+            times, colors, transition_time = await rgb_light_control.calculate_music_timings(mode, colors, file, send_delay)
+        except ValueError:
+            return make_message("Invalid audio file!", status_code=400)
+        data = {"times": times, "colors": colors, "transition_time": transition_time}
+        return make_message("Calculated music timings!", data=data)
+    except (KeyError, TypeError, ValueError):
+        return make_message("'mode', 'colors', and/or 'send_delay' were not provided or invalid.")
+
+
+@app.route("/estimate_light_delay", methods=REQUEST_METHODS)
 async def estimate_light_delay():
     try:
         data = await get_data()

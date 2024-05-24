@@ -238,19 +238,22 @@ def average_color_weighted(hsv_min: tuple[int, int, int], hsv_max: tuple[int, in
             int(hsv_min[2] * z_weight + hsv_max[2] * weight))
 
 
-async def calculate_music_timings(mode: str, colors_in: list[tuple[int, int, int]], calc_filepath: str,
+async def calculate_music_timings(mode: str, colors_in: list[tuple[int, int, int]], file: str,
                                   send_delay: float) -> tuple[list[float], list[tuple[int, int, int]], int]:
     """Calculate music timings from a given mode.
 
     Args:
         mode: The mode to calculate for. Should either be 'cycle' or 'gradient'.
         colors_in: The list of colors to use. Should be of exactly length 2 if using 'gradient', or at least length 1 for 'cycle'.
-        calc_filepath: The path to the music file to calculate from.
+        file: The path to the music file to calculate from or a file-like object.
         send_delay: The delay between sending a light request and said request completing.
 
     Returns:
         A tuple containing the list of times, the list of colors for those times, and the light transition time in that order.
         All timings are in seconds, and the colors are a tuple in HSV format.
+
+    Raises:
+        ValueError: If the provided 'file' failed to load (likely due to it being invalid in some way).
     """
     if mode == "gradient" and len(colors_in) != 2:
         error_exit("Can only use gradient music mode with exactly two colors.")
@@ -259,7 +262,10 @@ async def calculate_music_timings(mode: str, colors_in: list[tuple[int, int, int
 
     # Calculate beat timings
     print("Calculating all light changes to make")
-    waveform, sampling_rate = librosa.load(calc_filepath)
+    try:
+        waveform, sampling_rate = librosa.load(file)
+    except Exception:
+        raise ValueError("Invalid audio file or filepath provided!")
     bpm = librosa.beat.beat_track(y=waveform, sr=sampling_rate)[0][0]
     duration = librosa.get_duration(y=waveform, sr=sampling_rate)
     max_notes = int(bpm / 60 * duration * 2 / 3)
