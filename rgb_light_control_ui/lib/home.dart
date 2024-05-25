@@ -17,14 +17,11 @@ class Home extends StatefulWidget {
 }
 
 class HomeState extends State<Home> {
-
   // Part of HomeState's state.
   int currentPageIndex = 0;
   final Set<Light> selectedLights = {};
   String selectedMode = "Rainbow";
-
-  // Not part of HomeState's state.
-  Widget? activePlaybackWidget;
+  int page0RefreshCounter = 0;  // Increment to reset the state of page0.
 
 
   addLight(Light light) {
@@ -47,10 +44,18 @@ class HomeState extends State<Home> {
 
   @override
   Widget build(BuildContext context) {
+    final List<Widget> actions = [];
+    if (currentPageIndex == 0) {
+      actions.add(IconButton(onPressed: () => setState(() => page0RefreshCounter++), icon: const Icon(Icons.refresh)));
+    }
     return Scaffold(
-      appBar: AppBar(title: const Text(Constants.title), backgroundColor: Theme.of(context).colorScheme.inversePrimary),
-      body: [LightsPage(lights: selectedLights, addLight: addLight, removeLight: removeLight),
-        ModePage(selectedMode: selectedMode, setMode: setMode)][currentPageIndex],
+      appBar: AppBar(title: const Text(Constants.title), backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      actions: actions),
+      body: IndexedStack(
+        index: currentPageIndex,
+        children: [LightsPage(key: ValueKey(page0RefreshCounter), lights: selectedLights, addLight: addLight, removeLight: removeLight),
+          ModePage(selectedMode: selectedMode, setMode: setMode)]
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showModalBottomSheet(context: context, builder: (BuildContext context) {
           List<String> lightNames = [];
@@ -58,13 +63,10 @@ class HomeState extends State<Home> {
             lightNames.add(light.name);
           }
           if (selectedMode == "Rainbow") {
-            activePlaybackWidget = RainbowPlayback(lightNames: lightNames);
+            return RainbowPlayback(lightNames: lightNames);
           } else {
-            activePlaybackWidget = MusicPlayback(lightNames: lightNames);
+            return MusicPlayback(lightNames: lightNames);
           }
-          return activePlaybackWidget!;
-        }).whenComplete(() {
-          activePlaybackWidget = null;
         }),
         label: const Text("Run Lights"),
         icon: const Icon(Icons.play_arrow)

@@ -59,13 +59,16 @@ class LightsPageState extends State<LightsPage> {
             });
           }));
         }
-        return ListView(
-            children: checkboxes
-        );
+        return RefreshIndicator(
+            onRefresh: () async {
+              futureLights = getLights();
+              await futureLights;
+            },
+            child: ListView(physics: const AlwaysScrollableScrollPhysics(), children: checkboxes));
       } else if (snapshot.hasError) {
         return const Text("Failed to get the list of lights.");
       } else {
-        return const CircularProgressIndicator();
+        return const Center(child: CircularProgressIndicator());
       }
     });
   }
