@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -23,7 +24,7 @@ class RainbowPlaybackState extends State<RainbowPlayback> {
   bool canceled = false;
 
   Future<void> runRainbow() async {
-    while (!canceled) {
+    while (true) {
       await http.post(Uri.parse("${Constants.apiRoot}/set_hsv"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({"h": hValue, "s": 100, "v": 100, "transition": 10, "lights": widget.lightNames})
@@ -31,6 +32,10 @@ class RainbowPlaybackState extends State<RainbowPlayback> {
       if (++hValue > 360) {
         hValue = 0;
       }
+      if (canceled) {
+        break;  // Placed here to minimize the odds we call setState() after cancelling
+      }
+      setState(() {});
       await Future.delayed(const Duration(milliseconds: 10));
     }
   }
@@ -43,7 +48,21 @@ class RainbowPlaybackState extends State<RainbowPlayback> {
 
   @override
   Widget build(BuildContext context) {
-    return const Text("Running Rainbow Lights!");
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 128),
+      child: Wrap(
+        direction: Axis.vertical,
+        spacing: 32,
+        alignment: WrapAlignment.spaceEvenly,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          const Text("Running Rainbow Lights!"),
+          CircularProgressIndicator(value: null,
+              valueColor: AlwaysStoppedAnimation(HSVColor.fromAHSV(1, hValue as double, 1, 1).toColor())
+          ),
+        ],
+      ),
+    );
   }
 
   @override

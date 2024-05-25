@@ -57,16 +57,17 @@ class HomeState extends State<Home> {
           ModePage(selectedMode: selectedMode, setMode: setMode)]
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showModalBottomSheet(context: context, builder: (BuildContext context) {
-          List<String> lightNames = [];
-          for (final light in selectedLights) {
-            lightNames.add(light.name);
-          }
-          if (selectedMode == "Rainbow") {
-            return RainbowPlayback(lightNames: lightNames);
-          } else {
-            return MusicPlayback(lightNames: lightNames);
-          }
+        onPressed: () => showModalBottomSheet(context: context,
+            builder: (BuildContext context) {
+              List<String> lightNames = [];
+              for (final light in selectedLights) {
+                lightNames.add(light.name);
+              }
+              if (selectedMode == "Rainbow") {
+                return RainbowPlayback(lightNames: lightNames);
+              } else {
+                return MusicPlayback(lightNames: lightNames);
+              }
         }),
         label: const Text("Run Lights"),
         icon: const Icon(Icons.play_arrow)
