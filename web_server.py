@@ -1,4 +1,4 @@
-from quart import Quart, request, jsonify
+from quart import Quart, request, jsonify, send_from_directory
 import os
 import kasa
 from typing import Any, Union
@@ -67,7 +67,15 @@ def get_bulbs_list(data: dict):
     return bulbs_list
 
 
-@app.route("/calculate_music_timings", methods=REQUEST_METHODS)
+@app.after_request
+async def cors(resp):
+    resp.headers.add("Access-Control-Allow-Origin", "*")
+    resp.headers.add("Access-Control-Allow-Headers", "*")
+    resp.headers.add("Access-Control-Allow-Methods", "*")
+    return resp
+
+
+@app.route("/api/calculate_music_timings", methods=REQUEST_METHODS)
 async def calculate_music_timings():
     try:
         if request.method == "GET":
@@ -97,7 +105,7 @@ async def calculate_music_timings():
         return make_message("'mode', 'colors', and/or 'send_delay' were not provided or invalid.")
 
 
-@app.route("/estimate_light_delay", methods=REQUEST_METHODS)
+@app.route("/api/estimate_light_delay", methods=REQUEST_METHODS)
 async def estimate_light_delay():
     try:
         data = await get_data()
@@ -116,12 +124,12 @@ async def estimate_light_delay():
         return make_message("Please provide 'lights' and optionally 'num_tests' in a valid format.", status_code=400)
 
 
-@app.route("/get_lights", methods=REQUEST_METHODS)
+@app.route("/api/get_lights", methods=REQUEST_METHODS)
 async def get_lights():
     return make_message("Got light info!", data=all_bulbs_data)
 
 
-@app.route("/set_hsv", methods=REQUEST_METHODS)
+@app.route("/api/set_hsv", methods=REQUEST_METHODS)
 async def set_hsv():
     data = await get_data()
     try:
@@ -143,9 +151,19 @@ async def set_hsv():
         return make_message("Please provide 'h', 's', 'v', and 'lights' in a valid format.", status_code=400)
 
 
-@app.route("/ping", methods=REQUEST_METHODS)
+@app.route("/api/ping", methods=REQUEST_METHODS)
 async def ping():
     return make_message("Pong!")
+
+
+@app.route("/")
+async def home():
+    return await send_from_directory("rgb_light_control_ui/build/web", "index.html")
+
+
+@app.route("/<path:path>")
+async def site(path):
+    return await send_from_directory("rgb_light_control_ui/build/web", path)
 
 
 if __name__ == "__main__":
