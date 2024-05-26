@@ -2,14 +2,16 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:rgb_light_control_ui/settings.dart';
 
 import 'constants.dart';
 
 class RainbowPlayback extends StatefulWidget {
 
   final List<String> lightNames;
+  final RainbowSettings settings;
 
-  const RainbowPlayback({super.key, required this.lightNames});
+  const RainbowPlayback({super.key, required this.lightNames, required this.settings});
 
   @override
   State<StatefulWidget> createState() {
@@ -26,16 +28,19 @@ class RainbowPlaybackState extends State<RainbowPlayback> {
     while (true) {
       await http.post(Uri.parse("${Constants.apiRoot}/set_hsv"),
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"h": hValue, "s": 100, "v": 100, "transition": 10, "lights": widget.lightNames})
+        body: jsonEncode({"h": hValue, "s": 100, "v": 100,
+          "transition": widget.settings.transitionTimeMS, "lights": widget.lightNames})
       );
-      if (++hValue > 360) {
-        hValue = 0;
-      }
       if (canceled) {
         break;  // Placed here to minimize the odds we call setState() after cancelling
       }
-      setState(() {});
-      await Future.delayed(const Duration(milliseconds: 10));
+      setState(() {
+        hValue += widget.settings.stepSize;
+        if (++hValue > 360) {
+          hValue = 0;
+        }
+      });
+      await Future.delayed(Duration(milliseconds: widget.settings.timeBetweenChangesMS));
     }
   }
 

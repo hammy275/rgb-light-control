@@ -8,13 +8,23 @@ import 'constants.dart';
 class MusicPlayback extends StatefulWidget {
 
   final List<String> lightNames;
+  final String modeName;
 
-  const MusicPlayback({super.key, required this.lightNames});
+  const MusicPlayback({super.key, required this.lightNames, required this.modeName});
 
   @override
   State<StatefulWidget> createState() {
     return MusicPlaybackState();
   }
+
+  String getModeFromName() {
+    if (modeName == "Cycle to Music") {
+      return "cycle";
+    } else {
+      return "gradient";
+    }
+  }
+
 }
 
 class MusicPlaybackState extends State<MusicPlayback> {
@@ -53,7 +63,19 @@ class MusicPlaybackState extends State<MusicPlayback> {
       } else if (snapshot.hasError) {
         return Text("${snapshot.error}");
       } else {
-        return const CircularProgressIndicator();
+        return const Padding(
+          padding: EdgeInsets.symmetric(vertical: 32, horizontal: 128),
+          child: Wrap(
+            direction: Axis.vertical,
+            spacing: 32,
+            alignment: WrapAlignment.spaceEvenly,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text("Calculating Color Set Delay..."),
+              CircularProgressIndicator(value: null)
+            ],
+          ),
+        );
       }
     });
   }

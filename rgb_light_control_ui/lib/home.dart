@@ -5,6 +5,7 @@ import 'package:rgb_light_control_ui/lights_page.dart';
 import 'package:rgb_light_control_ui/mode_page.dart';
 import 'package:rgb_light_control_ui/playback_music.dart';
 import 'package:rgb_light_control_ui/playback_rainbow.dart';
+import 'package:rgb_light_control_ui/settings.dart';
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -22,6 +23,7 @@ class HomeState extends State<Home> {
   final Set<Light> selectedLights = {};
   String selectedMode = "Rainbow";
   int page0RefreshCounter = 0;  // Increment to reset the state of page0.
+  final RainbowSettings rainbowSettings = RainbowSettings();
 
 
   addLight(Light light) {
@@ -54,7 +56,7 @@ class HomeState extends State<Home> {
       body: IndexedStack(
         index: currentPageIndex,
         children: [LightsPage(key: ValueKey(page0RefreshCounter), lights: selectedLights, addLight: addLight, removeLight: removeLight),
-          ModePage(selectedMode: selectedMode, setMode: setMode)]
+          ModePage(selectedMode: selectedMode, setMode: setMode, rainbowSettings: rainbowSettings)]
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showModalBottomSheet(context: context,
@@ -64,9 +66,9 @@ class HomeState extends State<Home> {
                 lightNames.add(light.name);
               }
               if (selectedMode == "Rainbow") {
-                return RainbowPlayback(lightNames: lightNames);
+                return RainbowPlayback(lightNames: lightNames, settings: rainbowSettings);
               } else {
-                return MusicPlayback(lightNames: lightNames);
+                return MusicPlayback(lightNames: lightNames, modeName: selectedMode);
               }
         }),
         label: const Text("Run Lights"),
