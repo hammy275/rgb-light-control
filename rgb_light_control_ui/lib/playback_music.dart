@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:js_interop';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:just_audio/just_audio.dart';
 import 'package:rgb_light_control_ui/settings.dart';
 
 import 'constants.dart';
@@ -32,14 +34,18 @@ class MusicPlayback extends StatefulWidget {
 
 class MusicPlaybackState extends State<MusicPlayback> {
 
-  late Future<double> futureSendDelay;
+  late Future<Map?> futureSendDelay;
+  late Future<void> musicPlaying;
   int hValue = 0;
 
-  Future<double> getLightData() async {
+  Future<Map> getLightData() async {
+    // Get instrumental to send
     XFile? instrumental = widget.settings.instrumentalFile ?? widget.settings.musicFile;
     if (instrumental == null) {
-      return 3;
+      throw Exception("No music chosen!");
     }
+
+    // Get light delay
     final stopwatch = Stopwatch();
     stopwatch.start();
     final _ = await http.post(Uri.parse("${Constants.apiRoot}/ping"));
@@ -52,6 +58,8 @@ class MusicPlaybackState extends State<MusicPlayback> {
     if (lightDelayResp.statusCode == 200) {
       final lightDelayFromServer = jsonDecode(lightDelayResp.body)["data"];
       double sendDelay = lightDelayFromServer + approximateRequestTime;
+
+      // Calculate light change timings
       final colorList = [];
       for (final color in widget.settings.colors) {
         colorList.add({"h": color.hue.round(), "s": (color.saturation * 100).round(), "v": (color.value * 100).round()});
@@ -60,23 +68,39 @@ class MusicPlaybackState extends State<MusicPlayback> {
           headers: {"Content-Type": "application/json"},
           body: jsonEncode({"mode": widget.getModeFromName(), "send_delay": sendDelay, "colors": colorList,
             "file": {"filename": "file", "data": const Base64Encoder().convert(await instrumental.readAsBytes())}}));
-      return musicCalcResp.statusCode.toDouble();
+      return jsonDecode(musicCalcResp.body);
     } else {
       throw Exception("Failed to get light send delay ${lightDelayResp.body}");
     }
   }
 
+  Future<void> playMusic() async {
+    await futureSendDelay;
+    final player = AudioPlayer();
+    // TODO: Play audio
+}
+
   @override
   void initState() {
     super.initState();
     futureSendDelay = getLightData();
+    musicPlaying = playMusic();
   }
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder(future: futureSendDelay, builder: (context, snapshot) {
       if (snapshot.hasData) {
-        return const Text("Unimplemented");
+        return FutureBuilder(future: musicPlaying, builder: (context, snapshot) {
+          if (snapshot.hasData) {
+            // Music done playing
+            Navigator.pop(context);
+          } else if (snapshot.hasError) {
+            return Text("${snapshot.error}");
+          } else {
+            // TODO: "Playing audio" widget state
+          }
+        });
       } else if (snapshot.hasError) {
         return Text("${snapshot.error}");
       } else {

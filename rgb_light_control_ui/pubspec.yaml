@@ -38,6 +38,7 @@ dependencies:
   http: ^1.2.1
   file_selector: ^1.0.3
   flutter_colorpicker: ^1.1.0
+  just_audio: ^0.9.38
 
 dev_dependencies:
   flutter_test:
