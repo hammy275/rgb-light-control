@@ -1,6 +1,7 @@
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:rgb_light_control_ui/color_select.dart';
 import 'package:rgb_light_control_ui/file_select.dart';
 import 'package:rgb_light_control_ui/int_slider.dart';
 import 'package:rgb_light_control_ui/settings.dart';
@@ -84,6 +85,27 @@ class ModePageState extends State<ModePage> {
           fileSetter: (file) => setState(() {
             widget.musicSettings.instrumentalFile = file;
           }), fileTypes: xTypeGroups),
-    ]);
+      Container(padding: const EdgeInsets.all(16), height: 104, alignment: Alignment.centerLeft, child: Row(children: [
+        const Text("Select Colors"),
+        ListView.builder(
+          scrollDirection: Axis.horizontal, shrinkWrap: true,
+          itemCount: widget.musicSettings.colors.length + 1,
+          itemBuilder: (BuildContext context, int index) {
+            if (index == widget.musicSettings.colors.length) {
+              // Build add button
+              return IconButton(onPressed: () => setState(() {
+                widget.musicSettings.colors.add(const HSVColor.fromAHSV(1, 0, 0, 1));
+              }), icon: const Icon(Icons.add));
+            }
+            return ColorSelect(index: index, color: widget.musicSettings.colors[index],
+                setColor: (indexToSet, newColor) => setState(() {
+                  widget.musicSettings.colors[indexToSet] = newColor;
+                }), doRemove: (indexToRemove) => setState(() {
+                  widget.musicSettings.colors.removeAt(index);
+                }));
+          },
+        )
+    ])
+    )]);
   }
 }
