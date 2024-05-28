@@ -4,9 +4,13 @@ import kasa
 from typing import Any, Union
 import asyncio
 import json
+from collections import namedtuple
+import base64
+from io import BytesIO
 
 import rgb_light_control
 
+FileFromJSON = namedtuple("FileFromJSON", ["filename", "data"])
 REQUEST_METHODS: list[str] = ["GET", "POST"]
 
 discovery_ip = "255.255.255.255"
@@ -67,6 +71,11 @@ def get_bulbs_list(data: dict):
     return bulbs_list
 
 
+@app.errorhandler(rgb_light_control.RGBLightControlException)
+async def on_rgb_light_control_error(e: rgb_light_control.RGBLightControlException):
+    return make_message(str(e), 400)  # Likely a client parameter error
+
+
 @app.after_request
 async def cors(resp):
     resp.headers.add("Access-Control-Allow-Origin", "*")
@@ -82,11 +91,17 @@ async def calculate_music_timings():
             return make_message("Due to requiring file uploads, this endpoint only accepts POST requests.", status_code=405)
         data = await get_data()
         files = await request.files
-        if "file" not in files:
-            return make_message("No 'file' supplied.", status_code=400)
+        if len(files) == 0 or "file" not in files:
+            if "file" in data:
+                file = data["file"]
+                files = {"file": FileFromJSON(filename=file["filename"], data=base64.b64decode(file["data"]))}
+            else:
+                return make_message("No 'file' supplied.", status_code=400)
         file = files["file"]
         if file.filename == "":
             return make_message("Your music file does not have a name! Did you not select one?", status_code=400)
+        elif isinstance(file, FileFromJSON):
+            file = BytesIO(file.data)
 
         mode = data["mode"]
         if mode not in ["cycle", "gradient"]:

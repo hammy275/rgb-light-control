@@ -13,9 +13,16 @@ import numpy as np
 bulbs: list[SmartBulb] = []
 
 
+class RGBLightControlException(Exception):
+    pass
+
+
 def error_exit(msg: str):
-    print(msg)
-    sys.exit(1)
+    if __name__ == "__main__":
+        print(msg)
+        sys.exit(1)
+    else:
+        raise RGBLightControlException(msg)
 
 
 def ask(prompt: str, answers: list[str], default: Union[str, None] = None) -> str:

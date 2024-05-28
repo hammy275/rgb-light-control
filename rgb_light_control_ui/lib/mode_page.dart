@@ -1,5 +1,7 @@
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:rgb_light_control_ui/file_select.dart';
 import 'package:rgb_light_control_ui/int_slider.dart';
 import 'package:rgb_light_control_ui/settings.dart';
 
@@ -7,8 +9,10 @@ class ModePage extends StatefulWidget {
   final String selectedMode;
   final ValueSetter<String> setMode;
   final RainbowSettings rainbowSettings;
+  final MusicSettings musicSettings;
 
-  const ModePage({super.key, required this.selectedMode, required this.setMode, required this.rainbowSettings});
+  const ModePage({super.key, required this.selectedMode, required this.setMode, required this.rainbowSettings,
+    required this.musicSettings});
 
   @override
   State<StatefulWidget> createState() {
@@ -27,7 +31,7 @@ class ModePageState extends State<ModePage> {
         widget.setMode(value!);
       }));
     }
-    Widget settingsWidget = widget.selectedMode == "Rainbow" ? rainbowSettingsWidget(context) : const Text("Settings unimplemented");
+    Widget settingsWidget = widget.selectedMode == "Rainbow" ? rainbowSettingsWidget(context) : musicSettingsWidget(context);
     return Column(
       children: [
         Column(children: options),
@@ -66,5 +70,20 @@ class ModePageState extends State<ModePage> {
             }),
       ],
     );
+  }
+
+  Widget musicSettingsWidget(BuildContext context) {
+    const XTypeGroup mp3Group = XTypeGroup(label: "MP3s", extensions: ["mp3"]);
+    const List<XTypeGroup> xTypeGroups = [mp3Group];
+    return Column(children: [
+      FileSelect(label: "Select Music File", fileChosen: widget.musicSettings.musicFile,
+          fileSetter: (file) => setState(() {
+            widget.musicSettings.musicFile = file;
+          }), fileTypes: xTypeGroups),
+      FileSelect(label: "Select Instrumental File (if you have one)", fileChosen: widget.musicSettings.instrumentalFile,
+          fileSetter: (file) => setState(() {
+            widget.musicSettings.instrumentalFile = file;
+          }), fileTypes: xTypeGroups),
+    ]);
   }
 }

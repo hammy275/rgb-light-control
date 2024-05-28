@@ -24,6 +24,7 @@ class HomeState extends State<Home> {
   String selectedMode = "Rainbow";
   int page0RefreshCounter = 0;  // Increment to reset the state of page0.
   final RainbowSettings rainbowSettings = RainbowSettings();
+  final MusicSettings musicSettings = MusicSettings();
 
 
   addLight(Light light) {
@@ -56,7 +57,8 @@ class HomeState extends State<Home> {
       body: IndexedStack(
         index: currentPageIndex,
         children: [LightsPage(key: ValueKey(page0RefreshCounter), lights: selectedLights, addLight: addLight, removeLight: removeLight),
-          ModePage(selectedMode: selectedMode, setMode: setMode, rainbowSettings: rainbowSettings)]
+          ModePage(selectedMode: selectedMode, setMode: setMode, rainbowSettings: rainbowSettings,
+            musicSettings: musicSettings)]
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showModalBottomSheet(context: context,
@@ -68,7 +70,7 @@ class HomeState extends State<Home> {
               if (selectedMode == "Rainbow") {
                 return RainbowPlayback(lightNames: lightNames, settings: rainbowSettings);
               } else {
-                return MusicPlayback(lightNames: lightNames, modeName: selectedMode);
+                return MusicPlayback(lightNames: lightNames, modeName: selectedMode, settings: musicSettings,);
               }
         }),
         label: const Text("Run Lights"),
