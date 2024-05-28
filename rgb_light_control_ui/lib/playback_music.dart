@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:rgb_light_control_ui/settings.dart';
+import 'package:rgb_light_control_ui/xfile_audio_source.dart';
 
 import 'constants.dart';
 
@@ -34,7 +35,8 @@ class MusicPlayback extends StatefulWidget {
 
 class MusicPlaybackState extends State<MusicPlayback> {
 
-  late Future<Map?> futureSendDelay;
+  late Future<Map?> lightDataFuture;
+  late Future<AudioPlayer> musicPlayer;
   late Future<void> musicPlaying;
   int hValue = 0;
 
@@ -68,37 +70,69 @@ class MusicPlaybackState extends State<MusicPlayback> {
           headers: {"Content-Type": "application/json"},
           body: jsonEncode({"mode": widget.getModeFromName(), "send_delay": sendDelay, "colors": colorList,
             "file": {"filename": "file", "data": const Base64Encoder().convert(await instrumental.readAsBytes())}}));
-      return jsonDecode(musicCalcResp.body);
+      return jsonDecode(musicCalcResp.body)["data"];
     } else {
       throw Exception("Failed to get light send delay ${lightDelayResp.body}");
     }
   }
 
+  Future<AudioPlayer> loadMusic() async {
+    if (widget.settings.musicFile != null) {
+      final player = AudioPlayer();
+      await player.setAudioSource(XFileAudioSource(widget.settings.musicFile!));
+      return player;
+    } else {
+      throw Exception("No music chosen!");
+    }
+  }
+
   Future<void> playMusic() async {
-    await futureSendDelay;
-    final player = AudioPlayer();
-    // TODO: Play audio
-}
+    Map? lightData = await lightDataFuture;
+    AudioPlayer player = await musicPlayer;
+    if (lightData != null) {
+      List<double> times = List<double>.from(lightData["times"] as List);
+      List<Map> colors = List<Map>.from(lightData["colors"] as List);
+      int index = 0;
+      Future<void> playback = player.play();
+      while (index < times.length) {
+        final nextTime = times[index];
+        final nextColor = jsonEncode(colors[index]);
+        double playbackTime;
+        do {
+          playbackTime = player.position.inMilliseconds / 1000;
+        } while (playbackTime < nextTime);
+        await http.post(Uri.parse("${Constants.apiRoot}/set_hsv"),
+            headers: {"Content-Type": "application/json"},
+            body: nextColor
+        );
+        index += 1;
+      }
+      await playback;
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    futureSendDelay = getLightData();
+    lightDataFuture = getLightData();
+    musicPlayer = loadMusic();
     musicPlaying = playMusic();
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder(future: futureSendDelay, builder: (context, snapshot) {
+    return FutureBuilder(future: Future.wait([lightDataFuture, musicPlayer]), builder: (context, snapshot) {
       if (snapshot.hasData) {
         return FutureBuilder(future: musicPlaying, builder: (context, snapshot) {
           if (snapshot.hasData) {
             // Music done playing
             Navigator.pop(context);
+            return const Text("Music ended!");
           } else if (snapshot.hasError) {
             return Text("${snapshot.error}");
           } else {
             // TODO: "Playing audio" widget state
+            return const Text("Playing back music (better UI unimplemented)...");
           }
         });
       } else if (snapshot.hasError) {
