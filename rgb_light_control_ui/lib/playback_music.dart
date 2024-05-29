@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:js_interop';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -39,6 +38,8 @@ class MusicPlaybackState extends State<MusicPlayback> {
   late Future<AudioPlayer> musicPlayer;
   late Future<void> musicPlaying;
   int hValue = 0;
+  bool canceled = false;
+  Color playbackColor = Colors.black;
 
   Future<Map> getLightData() async {
     // Get instrumental to send
@@ -90,24 +91,37 @@ class MusicPlaybackState extends State<MusicPlayback> {
     Map? lightData = await lightDataFuture;
     AudioPlayer player = await musicPlayer;
     if (lightData != null) {
-      List<double> times = List<double>.from(lightData["times"] as List);
-      List<Map> colors = List<Map>.from(lightData["colors"] as List);
+      List<double> timesMS = List<double>.from(lightData["times"] as List);
+      for (int i = 0; i < timesMS.length; i++) {
+        timesMS[i] *= 1000;
+      }
+      List<Map> colorsJSON = List<Map>.from(lightData["colors"] as List);
+      List<Color> colorsColors = [];
+      for (final color in colorsJSON) {
+        colorsColors.add(HSVColor.fromAHSV(1, color["h"].round(), (color["s"] / 100).round(), (color["v"] / 100).round()).toColor());
+      }
       int index = 0;
       Future<void> playback = player.play();
-      while (index < times.length) {
-        final nextTime = times[index];
-        final nextColor = jsonEncode(colors[index]);
-        double playbackTime;
-        do {
-          playbackTime = player.position.inMilliseconds / 1000;
-        } while (playbackTime < nextTime);
+      while (index < timesMS.length && !canceled) {
+        final nextTime = timesMS[index];
+        final nextColorJSON = jsonEncode(colorsJSON[index]);
+        final nextColorColor = colorsColors[index];
+        double waitTime = nextTime - player.position.inMilliseconds;
+        Future.delayed(Duration(milliseconds: waitTime.floor()));
+        setState(() {
+          playbackColor = nextColorColor;
+        });
         await http.post(Uri.parse("${Constants.apiRoot}/set_hsv"),
             headers: {"Content-Type": "application/json"},
-            body: nextColor
+            body: nextColorJSON
         );
         index += 1;
       }
-      await playback;
+      if (canceled) {
+        player.stop();
+      } else {
+        await playback;
+      }
     }
   }
 
@@ -131,8 +145,20 @@ class MusicPlaybackState extends State<MusicPlayback> {
           } else if (snapshot.hasError) {
             return Text("${snapshot.error}");
           } else {
-            // TODO: "Playing audio" widget state
-            return const Text("Playing back music (better UI unimplemented)...");
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 128),
+              child: Wrap(
+                direction: Axis.vertical,
+                spacing: 32,
+                alignment: WrapAlignment.spaceEvenly,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  const Text("Playing Music and Lights..."),
+                  CircularProgressIndicator(value: null,
+                    valueColor: AlwaysStoppedAnimation(playbackColor))
+                ],
+              ),
+            );
           }
         });
       } else if (snapshot.hasError) {
@@ -153,5 +179,11 @@ class MusicPlaybackState extends State<MusicPlayback> {
         );
       }
     });
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    canceled = true;
   }
 }
