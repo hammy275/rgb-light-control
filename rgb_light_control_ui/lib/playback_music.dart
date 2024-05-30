@@ -100,6 +100,9 @@ class MusicPlaybackState extends State<MusicPlayback> {
       for (final color in colorsJSON) {
         colorsColors.add(HSVColor.fromAHSV(1, color["h"].round(), (color["s"] / 100).round(), (color["v"] / 100).round()).toColor());
       }
+      setState(() {
+        playbackColor = colorsColors[0];
+      });
       int index = 0;
       Future<void> playback = player.play();
       while (index < timesMS.length && !canceled) {
@@ -107,7 +110,7 @@ class MusicPlaybackState extends State<MusicPlayback> {
         final nextColorJSON = jsonEncode(colorsJSON[index]);
         final nextColorColor = colorsColors[index];
         double waitTime = nextTime - player.position.inMilliseconds;
-        Future.delayed(Duration(milliseconds: waitTime.floor()));
+        await Future.delayed(Duration(milliseconds: waitTime.floor()));
         setState(() {
           playbackColor = nextColorColor;
         });
