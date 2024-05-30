@@ -50,14 +50,20 @@ class MusicPlaybackState extends State<MusicPlayback> {
 
     // Get light delay
     final stopwatch = Stopwatch();
-    stopwatch.start();
-    final _ = await http.post(Uri.parse("${Constants.apiRoot}/ping"));
-    stopwatch.stop();
+    double totalMS = 0;
+    for (int i = 0; i < 10; i++) {
+      stopwatch.start();
+      final _ = await http.post(Uri.parse("${Constants.apiRoot}/ping"));
+      stopwatch.stop();
+      totalMS += stopwatch.elapsed.inMilliseconds;
+      stopwatch.reset();
+    }
+    totalMS /= 10;
     final lightDelayResp = await http.post(Uri.parse("${Constants.apiRoot}/estimate_light_delay"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({"lights": widget.lightNames})
     );
-    final double approximateRequestTime = stopwatch.elapsed.inMilliseconds / 1000 / 2;
+    final double approximateRequestTime = totalMS / 1000 / 2;
     if (lightDelayResp.statusCode == 200) {
       final lightDelayFromServer = jsonDecode(lightDelayResp.body)["data"];
       double sendDelay = lightDelayFromServer + approximateRequestTime;
@@ -65,7 +71,7 @@ class MusicPlaybackState extends State<MusicPlayback> {
       // Calculate light change timings
       final colorList = [];
       for (final color in widget.settings.colors) {
-        colorList.add({"h": color.hue.round(), "s": (color.saturation * 100).round(), "v": (color.value * 100).round()});
+        colorList.add([color.hue.round(), (color.saturation * 100).round(), (color.value * 100).round()]);
       }
       final musicCalcResp = await http.post(Uri.parse("${Constants.apiRoot}/calculate_music_timings"),
           headers: {"Content-Type": "application/json"},
@@ -95,29 +101,32 @@ class MusicPlaybackState extends State<MusicPlayback> {
       for (int i = 0; i < timesMS.length; i++) {
         timesMS[i] *= 1000;
       }
-      List<Map> colorsJSON = List<Map>.from(lightData["colors"] as List);
+      List<List> colorsJSONArray = List<List>.from(lightData["colors"] as List);
+      List<String> colorsJSONMaps = [];
       List<Color> colorsColors = [];
-      for (final color in colorsJSON) {
-        colorsColors.add(HSVColor.fromAHSV(1, color["h"].round(), (color["s"] / 100).round(), (color["v"] / 100).round()).toColor());
+      for (final color in colorsJSONArray) {
+        colorsColors.add(HSVColor.fromAHSV(1, color[0].round(), (color[1] / 100).round(), (color[2] / 100).round()).toColor());
+        colorsJSONMaps.add(jsonEncode({"h": color[0], "s": color[1], "v": color[2]}));
       }
-      setState(() {
-        playbackColor = colorsColors[0];
-      });
       int index = 0;
       Future<void> playback = player.play();
       while (index < timesMS.length && !canceled) {
         final nextTime = timesMS[index];
-        final nextColorJSON = jsonEncode(colorsJSON[index]);
+        final nextColorJSON = colorsJSONMaps[index];
         final nextColorColor = colorsColors[index];
         double waitTime = nextTime - player.position.inMilliseconds;
         await Future.delayed(Duration(milliseconds: waitTime.floor()));
+        try {
+          await http.post(Uri.parse("${Constants.apiRoot}/set_hsv"),
+              headers: {"Content-Type": "application/json"},
+              body: nextColorJSON
+          );
+        } catch (ignored) {
+          // No-op
+        }
         setState(() {
           playbackColor = nextColorColor;
         });
-        await http.post(Uri.parse("${Constants.apiRoot}/set_hsv"),
-            headers: {"Content-Type": "application/json"},
-            body: nextColorJSON
-        );
         index += 1;
       }
       if (canceled) {
@@ -188,5 +197,6 @@ class MusicPlaybackState extends State<MusicPlayback> {
   void dispose() {
     super.dispose();
     canceled = true;
+    musicPlayer.then((player) => player.stop());
   }
 }
