@@ -106,7 +106,7 @@ class MusicPlaybackState extends State<MusicPlayback> {
       List<Color> colorsColors = [];
       for (final color in colorsJSONArray) {
         colorsColors.add(HSVColor.fromAHSV(1, color[0].round(), (color[1] / 100).round(), (color[2] / 100).round()).toColor());
-        colorsJSONMaps.add(jsonEncode({"h": color[0], "s": color[1], "v": color[2]}));
+        colorsJSONMaps.add(jsonEncode({"h": color[0], "s": color[1], "v": color[2], "lights": widget.lightNames}));
       }
       int index = 0;
       Future<void> playback = player.play();
