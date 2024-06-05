@@ -323,7 +323,7 @@ async def calculate_music_timings(mode: str, colors_in: list[tuple[int, int, int
         frames_all = []
         colors_all = []
         dbs_all = []
-        frame_send_delay = max(librosa.time_to_frames([send_delay], sr=sampling_rate)[0] * 8, 1)
+        frame_send_delay = max(librosa.time_to_frames([send_delay], sr=sampling_rate)[0], 1)
         send_delay = librosa.frames_to_time([frame_send_delay], sr=sampling_rate)[0]
         f = frame_send_delay
         while f < len(dbs):
